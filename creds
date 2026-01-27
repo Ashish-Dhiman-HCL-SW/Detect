@@ -65,3 +65,37 @@ in.httpmindgate.banksdksample
 org.npci.erupeebank
 org.bank.eRupeeG20
 bank.merchant.web
+
+
+
+HARSHAD====================
+
+kafka server :  10.177.142.200
+ 
+Command to list the kafka topics
+
+cd /data/kafka/bin
+
+./kafka-topics.sh --list --bootstrap-server hcl-gb-qu-kafk-2001.dwhmartg.bank.sbi:9092 --command-config testclient.properties
+ 
+sh /data/kafka/bin/kafka-topics.sh --list --bootstrap-server hcl-gb-qu-kafk-2001.dwhmartg.bank.sbi:9092 --command-config /data/kafka/bin/testclient.properties
+ 
+sh /data/kafka/bin/kafka-topics.sh --create --topic DETECT_STREAMING_IMPORT --bootstrap-server hcl-gb-qu-kafk-2001.dwhmartg.bank.sbi:9092 --command-config /data/kafka/bin/testclient.properties --partitions 3 --replication-factor 1
+ 
+sh /data/kafka/bin/kafka-topics.sh --create --topic P2PDEBIT --bootstrap-server hcl-gb-qu-kafk-2001.dwhmartg.bank.sbi:9092 --command-config /data/kafka/bin/testclient.properties --partitions 3 --replication-factor 1
+ 
+ 
+ 
+ 
+***********Detect UAT***********
+ 
+Paths: 10.177.143.248   [Detect server]
+ 
+Feed application files(application.json):   /home/driveadmin/acme/etc/model/applications/upi_p2p_debit
+
+main file   : /home/driveadmin/acme/python/acme/application/
+
+parsers file  :  /home/driveadmin/acme/python/acme/parsers/message_queue/
+
+drive.json : /home/driveadmin/drive/etc
+ 
