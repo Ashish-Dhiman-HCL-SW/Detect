@@ -98,4 +98,8 @@ main file   : /home/driveadmin/acme/python/acme/application/
 parsers file  :  /home/driveadmin/acme/python/acme/parsers/message_queue/
 
 drive.json : /home/driveadmin/drive/etc
+
+
+
+echo '{"prdmobile":"9876543210","txnid":"TXN987654321","prdapp":"PhonePe","txntype":"CREDIT","prfname":"Amit Verma","txnamount":5000,"prfvaddr":"amit@upi","praccno":"998877665544","prifsccode":"HDFC0001234","transactionDateTime":"2026-01-20 01:18:00","crtdate":"2026-01-20 01:18:00","transactionStatus":"S"}' | ./kafka-console-producer.sh --broker-list localhost:9092 --topic P2PDEBIT
  
