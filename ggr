@@ -1,0 +1,881 @@
+([drive-12.1.9]|) bash-4.4$ cd /mnt/appsrc/etc/model/applications/upi_p2p_debit
+([drive-12.1.9]|) bash-4.4$ ls -ltr
+total 4
+-rwxr-xr-x. 1 driveadmin driveadmin   3 Jan 16 13:18 aggregations.json
+-rwxr-xr-x. 1 driveadmin driveadmin 159 Jan 16 13:18 application.json
+-rwxr-xr-x. 1 driveadmin driveadmin   3 Jan 16 13:18 enrichment_functions.json
+-rwxr-xr-x. 1 driveadmin driveadmin   3 Jan 16 13:19 enrichments.json
+([drive-12.1.9]|) bash-4.4$ cat aggregations.json
+{}
+([drive-12.1.9]|) bash-4.4$ cat application.json
+{
+    "feedApplication": {
+        "dataModels": [
+            "Identity"
+        ],
+        "keyAttribute": "MSISDN",
+        "name": "Upi P2P Debit"
+    }
+}
+([drive-12.1.9]|) bash-4.4$ cat enrichment_functions.json
+{}
+([drive-12.1.9]|) bash-4.4$ cat enrichments.json
+{}
+
+
+([drive-12.1.9]|) bash-4.4$ cd /mnt/appsrc/python/acme/application/upi_p2p_debit
+([drive-12.1.9]|) bash-4.4$ ls
+__init__.py  main.py  __pycache__
+([drive-12.1.9]|) bash-4.4$ cat main.py
+# Copyright (c) 2014-2025 by HCL Technologies Ltd.
+# All Rights Reserved.
+
+
+# xxcythonoff
+
+
+"""Implements the Recharge feed application"""
+
+
+import os
+
+
+from acme.parsers.message_queue.upi_p2p_debit.parser import Upip2pdebitParser as Parser
+from acme.utility.common import get_kafka_schema
+from hcl.drive.application import constants
+from hcl.drive.application.composition.feed_application import FeedApplication
+from hcl.drive.application.composition.schemas import external_feed_data_source_schema_partitioned
+from hcl.drive.application.operators.confluent_message_queue import KafkaSource
+from hcl.drive.application.operators.message_queue import DynamicPartitionAssignment
+from hcl.oxygen.composer.flow import Schema
+from hcl.oxygen.composer.types import Double, Int64, String
+from hcl.thrift.drive import constants as drive_constants
+
+
+class Upip2pdebitFeedApplication(FeedApplication):
+
+
+    """Implements the Recharge feed application"""
+
+
+    REJECTED_UNPROCESSED_PATH = "rejectedUnprocessedRecordFilePath"
+    BOOTSTRAP_SERVERS_KEY = "bootstrapServers"
+    GROUP_ID_KEY = "groupId"
+    SCHEMA_REGISTRY_URL_KEY = "schemaRegistryUrl"
+    SASL_KERBEROS_KEYTAB_KEY = "saslKerberosKeytab"
+    SASL_KERBEROS_PRINCIPAL_KEY = "saslKerberosPrincipal"
+    SASL_KERBEROS_SERVICE_NAME_KEY = "saslKerberosServiceName"
+    SASL_MECHANISM_KEY = "saslMechanism"
+    SCHEMA_FILE_KEY = "schemaFile"
+    SECURITY_PROTOCOL_KEY = "securityProtocol"
+    SSL_KEY_LOCATION_KEY = "sslKeyLocation"
+    SSL_CERTIFICATION_LOCATION_KEY = "sslCertificateLocation"
+    SSL_CA_LOCATION_KEY = "sslCaLocation"
+
+
+    PARAM_KEY_2_CONFLUENT_PARAM_NAME = {
+        SASL_KERBEROS_KEYTAB_KEY: "sasl.kerberos.keytab",
+        SASL_KERBEROS_PRINCIPAL_KEY: "sasl.kerberos.principal",
+        SASL_KERBEROS_SERVICE_NAME_KEY: "sasl.kerberos.service.name",
+        SASL_MECHANISM_KEY: "sasl.mechanism",
+        SECURITY_PROTOCOL_KEY: "security.protocol",
+        SSL_KEY_LOCATION_KEY: "ssl.key.location",
+        SSL_CERTIFICATION_LOCATION_KEY: "ssl.certificate.location",
+        SSL_CA_LOCATION_KEY: "ssl.ca.location"
+    }
+
+
+    def __init__(self):
+        super(Upip2pdebitFeedApplication, self).__init__(dynamic_data_partition_enabled=True, enable_mini_batch_source=False)
+
+
+    @staticmethod
+    def _get_parser_schema():
+        """Returns the parser schema"""
+        return Schema(
+            {
+                "MSISDN": String,
+                "transactionId": String,
+                "transactionPhonenumber": String,
+                "transactionType": String,
+                "transactionPersonName": String,
+                "transactionPersonFirstName": String,
+                "transactionAmount": Double,
+                "transactionApp": String,
+                "transactionDate": String,
+                "sysDateTime": String,
+                "transactionStatus": String,
+                "transactionVpaSender": String,
+                "transactionAcNoSender": String,
+                "transactionIfscNoSender": String,
+                drive_constants.CA_EPOCH_ATTRIBUTE: Int64,
+                drive_constants.CA_TIMESTAMP_ATTRIBUTE: Int64,
+                constants.KAFKA_OFFSET_ATTRIBUTE: Int64,
+                constants.KAFKA_PARTITION_ATTRIBUTE: Int64
+            },
+            name="parser_schema")
+
+
+    def _create_source_operator(self):
+        """Creates and returns the feed application's source operator"""
+        configs = {}
+        feed_param_2_confluent_param = Upip2pdebitFeedApplication.PARAM_KEY_2_CONFLUENT_PARAM_NAME
+        for param_key in feed_param_2_confluent_param:
+            if self.parameter(param_key) is not None and self.parameter(param_key) != "":
+                configs[feed_param_2_confluent_param.get(
+                    param_key)] = self.parameter(param_key)
+        configs["enable.ssl.certificate.verification"] = False
+        configs["ssl.endpoint.identification.algorithm"] = "none"
+
+
+        kafka_source_settings = self.kafka_source_settings()
+
+
+        bootstrap_servers = self.parameter(
+            Upip2pdebitFeedApplication.BOOTSTRAP_SERVERS_KEY).get_values()
+
+
+        kafka_schema_file_path = self.parameter(
+            Upip2pdebitFeedApplication.SCHEMA_FILE_KEY)
+        schema_string = None
+        if kafka_schema_file_path is not None and kafka_schema_file_path != "":
+            schema_string = get_kafka_schema(
+                os.path.expandvars(kafka_schema_file_path))
+
+
+        schema_registry_url = self.parameter(
+            Upip2pdebitFeedApplication.SCHEMA_REGISTRY_URL_KEY)
+        if schema_registry_url == "":
+            schema_registry_url = None
+
+
+        return self.instantiate_operator(
+            class_=KafkaSource,
+            name="source",
+            output_schema=external_feed_data_source_schema_partitioned,
+            additional_config=configs,
+            batch_size=kafka_source_settings.get_batchSize(),
+            data_partition_attribute=constants.KAFKA_PARTITION_ATTRIBUTE,
+            data_offset_attribute=constants.KAFKA_OFFSET_ATTRIBUTE,
+            epoch_attribute=drive_constants.CA_EPOCH_ATTRIBUTE,
+            epoch_size=kafka_source_settings.get_epochSize(),
+            group=self.parameter(Upip2pdebitFeedApplication.GROUP_ID_KEY),
+            kafka_bootstrap_hosts=bootstrap_servers if len(
+                bootstrap_servers) > 0 else self.kafka_hosts(),
+            max_partition_fetch_bytes=None,
+            message_attribute=constants.KAFKA_MESSAGE_ATTRIBUTE,
+            partitions=DynamicPartitionAssignment(),
+            schema=schema_string,
+            schema_registry_url=schema_registry_url,
+            topic=self.configuration().get_kafkaSourceSettings().get_topicName())
+
+
+    def create_flow(self):
+        """Creates the Card Transactions flow"""
+
+
+        parser_schema = Upip2pdebitFeedApplication._get_parser_schema()
+        source = self._create_source_operator()
+        parser = self.instantiate_operator(
+            class_=Parser,
+            date_format="%Y-%m-%d %H:%M:%S",
+            name=drive_constants.DRIVE_APPLICATION_PARSER_OPERATOR_NAME,
+            output_schema=parser_schema)
+
+
+        return self.compose_flow(ingress_flow=source >> parser)
+
+
+([drive-12.1.9]|) bash-4.4$ cd /mnt/appsrc/python/acme/parsers/message_queue/upi_p2p_debit
+([drive-12.1.9]|) bash-4.4$ ls
+__init__.py  parser.py  __pycache__
+([drive-12.1.9]|) bash-4.4$ cat parser.py
+# Copyright (c) 2014-2025 by HCL Technologies Ltd.
+# All Rights Reserved.
+
+# xxcythonoff
+
+"""Implements the card Transaction  parser"""
+
+from builtins import str
+import json
+import traceback
+
+from hcl.drive.utility.date_time_parser import DateTimeParser
+from hcl.drive.application import constants
+from hcl.oxygen.composer.base import Operator, OperatorValidator, Punctuation, input_port_arity, output_port_arity, \
+    oxygen_operator
+from hcl.oxygen.composer.types import Int64
+from hcl.thrift.drive.constants import CA_EPOCH_ATTRIBUTE, CA_TIMESTAMP_ATTRIBUTE
+
+
+class Upip2pdebitParser(Operator):
+
+    """Implements an operator that parses the card Transaction data"""
+
+    @oxygen_operator(input_port_arity(exactly=1), output_port_arity(exactly=1))
+    def __init__(self, date_format=None):
+        super(Upip2pdebitParser, self).__init__()
+        self._date_format = date_format
+        self._datetime_parser = DateTimeParser(self._date_format)
+        self._output_attribute_name_2_type = None
+        self._input_epoch_index = None
+        self._output_epoch_index = None
+        self._output_attribute_name_2_index = {}
+        self._input_data_partition_index = None
+        self._input_data_offset_index = None
+
+    def process_punctuation(self, _, punctuation):
+        if punctuation == Punctuation.WINDOW_MARKER and self._context.n_output_ports == 1:
+            self._context.punctuate(0, Punctuation.WINDOW_MARKER)
+        if punctuation == Punctuation.FINAL_MARKER:
+            self._context.request_shutdown()
+
+    def process(self, _, in_tuple):
+        try:
+            self.process_impl(in_tuple)
+        except BaseException as e:
+            error_message = "failed to process the following record: '%s', details: %s" % (
+                in_tuple.line, str(e))
+            self.collect_and_log_error(error_message, in_tuple)
+
+    def process_impl(self, in_tuple):
+        """Implements process function of Recharge Transaction feed application parser"""
+        try:
+            json_record = json.loads(in_tuple.line)
+            self._logger.debug("in: %s" % json_record)
+        except BaseException as ex:
+            error_message = "failed to load the following json: '%s', details: %s" % (
+                in_tuple.line, traceback.format_exc())
+            self.collect_and_log_error(error_message, in_tuple)
+            self._logger.error(error_message)
+            return
+        output_tuple = self._context.create_outgoing_tuple(0)
+        output_tuple.MSISDN = json_record["prdmobile"]
+        output_tuple.transactionPhonenumber = json_record["prdmobile"]
+        output_tuple.transactionId = json_record["txnid"]
+        output_tuple.transactionType = json_record["txntype"]
+        output_tuple.transactionPersonName = json_record["prfname"]
+        full_name = json_record.get("prfname","").strip()
+        first_name = full_name.split()[0] if full_name else 'User'
+        output_tuple.transactionPersonFirstName = first_name
+        output_tuple.transactionAmount = float(json_record["txnamount"])
+        output_tuple.transactionApp = json_record["prdapp"]
+        output_tuple.transactionVpaSender = json_record["prfvaddr"]
+        output_tuple.transactionAcNoSender = json_record["praccno"]
+        output_tuple.transactionIfscNoSender = json_record["prifsccode"]
+        output_tuple.transactionDate = json_record["transactionDateTime"]
+        #output_tuple.sysDateTime = json_record["crtdate"]
+        output_tuple.transactionStatus = json_record.get("currstatusdesc")
+        date_utime = self._datetime_parser.utime(json_record["transactionDateTime"])
+        setattr(output_tuple, CA_TIMESTAMP_ATTRIBUTE, date_utime)
+        output_tuple[self._output_epoch_index] = in_tuple[self._input_epoch_index]
+        output_tuple[self._output_attribute_name_2_index[constants.KAFKA_PARTITION_ATTRIBUTE]] = in_tuple[self._input_data_partition_index]
+        output_tuple[self._output_attribute_name_2_index[constants.KAFKA_OFFSET_ATTRIBUTE]] = in_tuple[self._input_data_offset_index]
+        self._logger.debug("out: %s" % output_tuple)
+        self._context.emit(0, output_tuple)
+
+    def set_up(self):
+        validator = OperatorValidator(self._context)
+        self._input_epoch_index = validator.validate_incoming_tuple_schema_attribute(
+            attribute_name=CA_EPOCH_ATTRIBUTE, attribute_type=Int64, port_index=0)
+        self._output_epoch_index = validator.validate_outgoing_tuple_schema_attribute(
+            attribute_name=CA_EPOCH_ATTRIBUTE, attribute_type=Int64, port_index=0)
+        self._input_data_partition_index = validator.validate_incoming_tuple_schema_attribute(
+            attribute_name=constants.KAFKA_PARTITION_ATTRIBUTE, attribute_type=Int64, port_index=0)
+        self._input_data_offset_index = validator.validate_incoming_tuple_schema_attribute(
+            attribute_name=constants.KAFKA_OFFSET_ATTRIBUTE, attribute_type=Int64, port_index=0)
+        output_tuple_schema = self._context.outgoing_tuple_schema(0)
+        self._output_attribute_name_2_type = output_tuple_schema.attribute_2_type()
+        for attribute in output_tuple_schema.attribute_2_type():
+            self._output_attribute_name_2_index[attribute] = output_tuple_schema.attribute_index(attribute)
+
+
+
+([drive-12.1.9]|) bash-4.4$ cd /mnt/appsrc/etc
+([drive-12.1.9]|) bash-4.4$ ls
+demo_mode  model  producer_config.properties
+([drive-12.1.9]|) bash-4.4$ cat producer_config.properties
+############################# Producer Basics #############################
+# Ensure the port is correct. SSL usually runs on 9093, but check if your server uses 9092.
+bootstrap.servers=
+
+# Serializers (Required for Producers)
+#key.serializer=org.apache.kafka.common.serialization.StringSerializer
+#value.serializer=org.apache.kafka.common.serialization.StringSerializer
+
+# Reliability settings (Optional but recommended)
+acks=all
+retries=3
+
+########################### SSL Configurations ###########################
+security.protocol=SSL
+
+# Truststore (CA Cert)
+ssl.truststore.location=/mnt/appsrc/kafka/certs/uat-kafka.truststore.java8.p12
+ssl.truststore.password=xxxxxxx
+ssl.truststore.type=PKCS12
+
+# Keystore (Client Cert & Private Key)
+ssl.keystore.location=/mnt/appsrc/kafka/certs/uat-kafka.keystore.java8.p12
+ssl.keystore.password=xxxxxxx
+ssl.key.password=xxxxxx
+ssl.keystore.type=PKCS12
+
+# Disable Hostname Verification
+# Leaving this value empty is crucial to match "ssl.endpoint.identification.algorithm="
+ssl.endpoint.identification.algorithm=
+
+
+([drive-12.1.9]|) bash-4.4$ cd /mnt
+([drive-12.1.9]|) bash-4.4$ ls
+appsrc  drive.json  instance_home  interface_application.env  runtime_environment.json
+([drive-12.1.9]|) bash-4.4$ cat drive.json
+
+{
+    "communicationServices": [
+        {
+            "className": "com.hcl.drive.communication.service.KafkaBasedService",
+            "messageNotificationTimeoutInSeconds": 600,
+            "name": "KafkaBasedService",
+            "types": [
+                "Inbound",
+                "Outbound"
+            ]
+        }
+    ],
+    "drive": {
+        "administratorUser": {
+            "displayName": "Administrator",
+            "firstName": "Administrator",
+            "lastName": "User",
+            "username": "admin"
+        },
+        "applicationHealthMetricsRefreshPeriodInSeconds": 60,
+        "applicationPartitionStartupTimeoutInSeconds": 600,
+        "audience": {
+            "clientInactivityTimeoutInMillis": 600000,
+            "maxNumOfActiveQueriesCached": 10,
+            "maxNumOfBucketsForSparseNumericalHistograms": 10000,
+            "maxNumOfConcurrentQueriesUnderExecution": 10,
+            "maxNumOfEvaluationErrorsToReport": 10,
+            "maxNumOfUniqueValuesForCategoricalHistograms": 200000,
+            "queryExpirationTimeoutInMillis": 3600000,
+            "queryFilterSamplingRate": 1.0
+        },
+        "auditLogConfiguration": {
+            "maxFileSizeInMBs": 1024,
+            "maxNumFiles": 5
+        },
+        "campaignActuator": {
+            "contactPolicyCheckerSettings": {
+                "batchSize": 1,
+                "perUserContactPolicy": {
+                    "countBasedPolicies": [
+                        {
+                            "countThreshold": 50,
+                            "timeUnit": "Days",
+                            "windowSize": 7
+                        }
+                    ]
+                }
+            },
+            "deduplicatorFsyncBatchSize": 1000,
+            "feedDataKafkaSourceSettings": {
+                "batchSize": 1000
+            },
+            "logLevel": "INFO",
+            "mergerSettings": {
+                "inputBufferSize": 1000,
+                "maxBlockingTimeInMillis": 500
+            },
+            "name": "Campaign Actuator",
+            "numParallelChannels": 2,
+            "responseMessageKafkaSourceSettings": {
+                "batchSize": 1000
+            },
+            "triggerEvaluatorSettings": {
+                "batchSize": 1,
+                "maxAllowedTimeLagInSeconds": 86400,
+                "stateExpirationCheckIntervalInMillis": 5000
+            },
+            "useKafkaToProcessActuation": true
+        },
+        "communicationConfiguration": {
+            "inboundCommunicationServices": [
+                {
+                    "services": [
+                        "KafkaBasedService"
+                    ],
+                    "type": "Event"
+                }
+            ],
+            "includeTupleAttributesInMessageContext": true,
+            "outboundCommunicationServices": [
+                {
+                    "services": [
+                        "KafkaBasedService"
+                    ],
+                    "type": "Event"
+                }
+            ]
+        },
+        "currency": {
+            "code": "USD",
+            "symbol": "$"
+        },
+        "database": {
+            "name": "drive_acme_core",
+            "server": {
+                "ip": "",
+                "port": 
+            },
+            "type": "MariaDB",
+            "userName": "drive",
+            "userPassword": "xxxxxxxxxxxxxxxxx"
+        },
+        "demoModeEnabled": false,
+        "displayLocale": "en_US",
+        "distanceDisplayUnitSystem": "Metric",
+        "driveUser": {
+            "displayName": "Drive User",
+            "email": "support@hcl.com",
+            "firstName": "Drive",
+            "lastName": "User",
+            "password": "81ED6217816E0F669A36DDC709FF7479313BA3AFD351C553857C34C204DBC13885B0FB3D276FD2B4ACCDF96F8E87CB4E"
+        },
+        "enabledFeatures": [
+            "Events"
+        ],
+        "eventEndpoints": [
+            "DB",
+            "Interact",
+            "Journey",
+            "CDP"
+        ],
+        "externalKafkaConfiguration": {
+            "kafkaSources": [
+                {
+                    "kafkaServer": {
+                        "ip": "",
+                        "port": 
+                    },
+                    "name": "Feed Data Source",
+                    "zooKeeperServer": {
+                        "ip": "",
+                        "port": 
+                    }
+                }
+            ]
+        },
+        "fastPast": {
+            "ports": [
+                41235
+            ]
+        },
+        "feedApplications": [
+            {
+                "logLevel": "INFO",
+                "name": "Ericsson Usage"
+            },
+            {
+                "logLevel": "INFO",
+                "name": "Topup Demo"
+            },
+            {
+                "kafkaSinkBatchSize": 1,
+                "kafkaSourceSettings": {
+                    "batchSize": 1,
+                    "epochSize": 1,
+                    "topicName": "RECHARGE"
+                },
+                "logLevel": "INFO",
+                "name": "Recharge",
+                "numParallelChannels": 1,
+                "parameters": [
+                    {
+                        "name": "bootstrapServers",
+                        "stringListValue": {
+                            "values": [
+                                ""
+                            ]
+                        }
+                    },
+                    {
+                        "name": "groupId",
+                        "stringValue": "group-hcl"
+                    },
+                    {
+                        "name": "schemaRegistryUrl",
+                        "stringValue": ""
+                    },
+                    {
+                        "name": "saslKerberosKeytab",
+                        "stringValue": ""
+                    },
+                    {
+                        "name": "saslKerberosPrincipal",
+                        "stringValue": ""
+                    },
+                    {
+                        "name": "saslKerberosServiceName",
+                        "stringValue": ""
+                    },
+                    {
+                        "name": "saslMechanism",
+                        "stringValue": ""
+                    },
+                    {
+                        "name": "schemaFile",
+                        "stringValue": ""
+                    },
+                    {
+                        "name": "securityProtocol",
+                        "stringValue": ""
+                    }
+                ]
+            },
+            {
+                "kafkaSinkBatchSize": 1,
+                "kafkaSourceSettings": {
+                  "batchSize": 1,
+                  "epochSize": 1,
+                  "topicName": "P2PDEBIT"
+                },
+                "logLevel": "INFO",
+                "name": "Upi P2P Debit",
+                "numParallelChannels": 1,
+                "parameters": [
+                    {
+                      "name": "bootstrapServers",
+                      "stringListValue": {
+                        "values": [
+                          ""
+                        ]
+                      }
+                    },
+                    {
+                      "name": "groupId",
+                      "stringValue": "group-hcl"
+                    },
+                    {
+                      "name": "securityProtocol",
+                      "stringValue": "SSL"
+                    },
+                    {
+                      "name": "sslKeyLocation",
+                      "stringValue": "/mnt/appsrc/kafka/certs/client-key.pem"
+                    },
+                    {
+                      "name": "sslCertificateLocation",
+                      "stringValue": "/mnt/appsrc/kafka/certs/client-cert.pem"
+                    },
+                                        {
+                      "name": "sslCaLocation",
+                      "stringValue": "/mnt/appsrc/kafka/certs/ca-cert.pem"
+                    },
+                    {
+                      "name": "schemaRegistryUrl",
+                      "stringValue": ""
+                    },
+                    {
+                      "name": "schemaFile",
+                      "stringValue": ""
+                    },
+                    {
+                      "name": "saslKerberosKeytab",
+                      "stringValue": ""
+                    },
+                    {
+                      "name": "saslKerberosPrincipal",
+                      "stringValue": ""
+                    },
+                    {
+                      "name": "saslKerberosServiceName",
+                      "stringValue": ""
+                    },
+                    {
+                      "name": "saslMechanism",
+                      "stringValue": ""
+                    }
+                ]
+            },
+            {
+                "name": "Customer Profile Refresh",
+                "numParallelChannels": 1,
+                "parameters": [
+                    {
+                        "name": "inputFileDelimiter",
+                        "stringValue": "~"
+                    },
+                    {
+                        "int32Value": 33,
+                        "name": "numOfFields"
+                    },
+                    {
+                        "name": "periodInSeconds",
+                        "stringValue": "2"
+                    },
+                    {
+                        "boolValue": true,
+                        "name": "skipCampaignActuator"
+                    }
+                ],
+                "postAggregationEnricherBatchSize": 500,
+                "preAggregationEnricherBatchSize": 500
+            }
+        ],
+        "feedDataModels": [
+            "Identity",
+            "Recharge",
+            "Top Channels Prediction",
+            "Topup",
+            "Usage"
+        ],
+        "fulfillmentServices": [
+            "FileBasedService"
+        ],
+        "internalKafkaConfiguration": {
+            "kafkaPort": 41240,
+            "zooKeeperPort": 41241
+        },
+        "jupyterNotebookPort": 9999,
+        "keystorePassword": "9FF447BB5A460414F5EBB91F767A91100C5656861C5B773BEA0B5A911C78F21782749AA3BAB4BBE9C7EE1AEB9AC1EAB3",
+        "mapCenter": {
+            "latitude": 39.215,
+            "longitude": 34.86,
+            "title": "Turkey",
+            "zoomLevel": 6
+        },
+        "nameServicePort": 41232,
+        "pinPoint": {
+            "ports": [
+                41233
+            ]
+        },
+        "processConfigurations": {
+            "configurationItems": [
+                {
+                    "name": "numThreadsPerProcessForProcessActuation",
+                    "value": "2"
+                },
+                {
+                    "name": "numThreadsPerProcessForEventConsumption",
+                    "value": "2"
+                },
+                {
+                    "name": "numProcessesForProcessActuation",
+                    "value": "2"
+                },
+                {
+                    "name": "numProcessesForEventConsumption",
+                    "value": "2"
+                }
+            ],
+            "kafkaRebalancing": {
+                "enableForEventConsumption": true,
+                "enableForProcessActuation": true
+            },
+            "modes": [
+                "REST"
+            ]
+        },
+        "profiles": [
+            "Customer",
+            "Tower"
+        ],
+        "referenceDatasets": [
+            "Towers"
+        ],
+        "tomcatConfiguration": {
+            "hostname": "tomcat",
+            "httpConfiguration": {
+                "httpBoundOnlyToLocalhost": false
+            },
+            "httpsEnabled": false,
+            "port": 8081,
+            "shutdownPort": 8010,
+            "usingSelfSignedCertificate": false
+        }
+    },
+    "eventConsumers": [
+        {
+            "className": "com.hcl.drive.communication.UnicaInteractEventConsumer",
+            "name": "UnicaInteractEventConsumer",
+            "parameters": [
+                {
+                    "name": "audienceIdAttributeName",
+                    "stringValue": "ACCOUNTID"
+                },
+                {
+                    "name": "campaignIdAttributeName",
+                    "stringValue": "offerCode"
+                },
+                {
+                    "name": "customerKeyFieldName",
+                    "stringValue": "MSISDN"
+                },
+                {
+                    "name": "databaseServerIp",
+                    "stringValue": ""
+                },
+                {
+                    "name": "databaseServerUser",
+                    "stringValue": "drive"
+                },
+                {
+                    "name": "databaseServerPassword",
+                    "stringValue": "xxxxxxxxxxxxxxx"
+                },
+                {
+                    "int32Value": 3306,
+                    "name": "databaseServerPort"
+                },
+                {
+                    "name": "databaseName",
+                    "stringValue": "drive_acme_core"
+                },
+                {
+                    "name": "dateTimeAttributeName",
+                    "stringValue": "ts"
+                },
+                {
+                    "name": "eventParamEventName",
+                    "stringValue": "event"
+                },
+                {
+                    "name": "eventParamInboundChannelName",
+                    "stringValue": "inbound_channel"
+                },
+                {
+                    "name": "eventParamInboundChannelValue",
+                    "stringValue": "hcl"
+                },
+                {
+                    "name": "payloadChDebugValue",
+                    "stringValue": "false"
+                },
+                {
+                    "name": "payloadGatewayValue",
+                    "stringValue": "InboundGateway"
+                },
+                {
+                    "name": "payloadIcNameValue",
+                    "stringValue": "testDetect"
+                },
+                {
+                    "name": "producerConfigFilePath",
+                    "stringValue": "${HCL_HOME}/../${HCL_SOLUTION}/etc/producer_config.properties"
+                },
+                {
+                    "name": "producerKrb5ConfigFilePath",
+                    "stringValue": "/etc/krb5.conf"
+                },
+                {
+                    "name": "producerTopic",
+                    "stringValue": "INTERACT_QUALIFIED_TRANS_TOPIC"
+                }
+            ]
+        },
+        {
+            "className": "com.hcl.drive.communication.UnicaJourneyEventConsumer",
+            "name": "UnicaJourneyEventConsumer",
+            "parameters": [
+                {
+                    "name": "payloadEntrySourceCode",
+                    "stringValue": "ES-00001324"
+                },
+                {
+                    "name": "databaseServerIp",
+                    "stringValue": ""
+                },
+                {
+                    "name": "databaseServerUser",
+                    "stringValue": "drive"
+                },
+                {
+                    "name": "databaseServerPassword",
+                    "stringValue": "xxxxxxxxxxxxxxxxx"
+                },
+                {
+                    "int32Value": 3306,
+                    "name": "databaseServerPort"
+                },
+                {
+                    "name": "databaseName",
+                    "stringValue": "drive_acme_core"
+                },
+                {
+                    "name": "producerConfigFilePath",
+                    "stringValue": "${HCL_HOME}/../${HCL_SOLUTION}/etc/producer_config.properties"
+                },
+                {
+                    "name": "producerKrb5ConfigFilePath",
+                    "stringValue": "/etc/krb5.conf"
+                },
+                {
+                    "name": "producerTopic",
+                    "stringValue": "DETECT_STREAMING_IMPORT"
+                }
+            ]
+        },
+        {
+            "className": "com.hcl.drive.communication.UnicaCDPEventConsumer",
+            "name": "UnicaCDPEventConsumer",
+            "parameters": [
+                {
+                    "name": "databaseServerIp",
+                    "stringValue": ""
+                },
+                {
+                    "name": "databaseServerUser",
+                    "stringValue": "drive"
+                },
+                {
+                    "name": "databaseServerPassword",
+                    "stringValue": "xxxxxxxxxxxxxxxxx"
+                },
+                {
+                    "int32Value": 3306,
+                    "name": "databaseServerPort"
+                },
+                {
+                    "name": "databaseName",
+                    "stringValue": "drive_acme_core"
+                },
+                {
+                    "name": "producerConfigFilePath",
+                    "stringValue": "${HCL_HOME}/../${HCL_SOLUTION}/etc/producer_config.properties"
+                },
+                {
+                    "name": "producerKrb5ConfigFilePath",
+                    "stringValue": "/etc/krb5.conf"
+                },
+                {
+                    "name": "producerTopic",
+                    "stringValue": "CDP_QUALIFIED_TRANS_TOPIC"
+                }
+            ]
+        }
+    ],
+    "fulfillmentServices": [
+        {
+            "className": "com.hcl.drive.fulfillment.service.FileBasedService",
+            "name": "FileBasedService",
+            "parameters": [
+                {
+                    "name": "messagesFilePath",
+                    "stringValue": "${HCL_INSTANCE_HOME}/fulfillment/messages"
+                }
+            ]
+        }
+    ],
+    "runningMode": "ScaledDistributed",
+    "solution": {
+        "customerName": "Acme Customer",
+        "mainClass": "com.hcl.acme.common.AcmeMain"
+    }
+}
+
+
+
