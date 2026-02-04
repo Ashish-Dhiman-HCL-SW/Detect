@@ -7,8 +7,8 @@ https://ced-uat.apps.ocpdwhnp.dwhmartg.bank.sbi/
 
 VM server:- 
 
-10.177.143.247  DEV 
-10.177.143.248 UAT
+10  DEV 
+10 UAT
 user driveadmin
 server 203 bastion
 
@@ -32,13 +32,13 @@ application feed name - Upi P2P Debit
 ======================================================
 kafka details
 
-Server IP : 10.177.142.200
+Server IP :
 #################################SSL Configurations###############################
 ssl.keystore.location=/data/kafka/certs/uat-kafka.server.keystore.jks
-ssl.keystore.password=Sbi@123
-ssl.key.password=Sbi@123
+ssl.keystore.password=
+ssl.key.password=
 ssl.truststore.location=/data/kafka/certs/uat-kafka.server.truststore.jks
-ssl.truststore.password=Sbi@123
+ssl.truststore.password=
 ssl.endpoint.identification.algorithm=
 ssl.client.auth=required
 security.inter.broker.protocol=SSL
@@ -70,26 +70,26 @@ bank.merchant.web
 
 HARSHAD====================
 
-kafka server :  10.177.142.200
+kafka server :  
  
 Command to list the kafka topics
 
 cd /data/kafka/bin
 
-./kafka-topics.sh --list --bootstrap-server hcl-gb-qu-kafk-2001.dwhmartg.bank.sbi:9092 --command-config testclient.properties
+./kafka-topics.sh --list --bootstrap-server hcl--.sbi:9092 --command-config testclient.properties
  
-sh /data/kafka/bin/kafka-topics.sh --list --bootstrap-server hcl-gb-qu-kafk-2001.dwhmartg.bank.sbi:9092 --command-config /data/kafka/bin/testclient.properties
+sh /data/kafka/bin/kafka-topics.sh --list --bootstrap-server hcl-k.sbi:9092 --command-config /data/kafka/bin/testclient.properties
  
-sh /data/kafka/bin/kafka-topics.sh --create --topic DETECT_STREAMING_IMPORT --bootstrap-server hcl-gb-qu-kafk-2001.dwhmartg.bank.sbi:9092 --command-config /data/kafka/bin/testclient.properties --partitions 3 --replication-factor 1
+sh /data/kafka/bin/kafka-topics.sh --create --topic DETECT_STREAMING_IMPORT --bootstrap-server hcl-gb-qu-bank.sbi:92 --command-config /data/kafka/bin/testclient.properties --partitions 3 --replication-factor 1
  
-sh /data/kafka/bin/kafka-topics.sh --create --topic P2PDEBIT --bootstrap-server hcl-gb-qu-kafk-2001.dwhmartg.bank.sbi:9092 --command-config /data/kafka/bin/testclient.properties --partitions 3 --replication-factor 1
+sh /data/kafka/bin/kafka-topics.sh --create --topic P2PDEBIT --bootstrap-server hcl-gb:92 --command-config /data/kafka/bin/testclient.properties --partitions 3 --replication-factor 1
  
  
  
  
 ***********Detect UAT***********
  
-Paths: 10.177.143.248   [Detect server]
+Paths:   [Detect server]
  
 Feed application files(application.json):   /home/driveadmin/acme/etc/model/applications/upi_p2p_debit
 
@@ -101,7 +101,7 @@ drive.json : /home/driveadmin/drive/etc
 
 
 
-echo '{"prdmobile":"9876543210","txnid":"TXN987654321","prdapp":"PhonePe","txntype":"CREDIT","prfname":"Amit Verma","txnamount":5000,"prfvaddr":"amit@upi","praccno":"998877665544","prifsccode":"HDFC0001234","transactionDateTime":"2026-01-20 01:18:00","crtdate":"2026-01-20 01:18:00","transactionStatus":"S"}' | ./kafka-console-producer.sh --broker-list localhost:9092 --topic P2PDEBIT
+echo '{"prdmobile":"98","txnid":"TX4321","prdapp":"PhonePe","txntype":"CREDIT","prfname":"Amit Verma","txnamount":5000,"prfvaddr":"amit@upi","praccno":"9544","prifsccode":"1234","transactionDateTime":"2026-01-20 01:18:00","crtdate":"2026-01-20 01:18:00","transactionStatus":"S"}' | ./kafka-console-producer.sh --broker-list localhost:9092 --topic P2PDEBIT
 
 
 
