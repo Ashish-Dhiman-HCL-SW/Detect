@@ -1,0 +1,179 @@
+bootstrap.servers=${BOOTSTRAP_SERVERS}
+
+acks=all
+retries=3
+
+security.protocol=SSL
+
+ssl.truststore.location=/mnt/appsrc/kafka/certs/uat-kafka.truststore.java8.p12
+ssl.truststore.password=${SSL_TRUSTSTORE_PASSWORD}
+ssl.truststore.type=PKCS12
+
+ssl.keystore.location=/mnt/appsrc/kafka/certs/uat-kafka.keystore.java8.p12
+ssl.keystore.password=${SSL_KEYSTORE_PASSWORD}
+ssl.key.password=${SSL_KEY_PASSWORD}
+ssl.keystore.type=PKCS12
+
+ssl.endpoint.identification.algorithm=
+
+
+
+
+==========================================================
+1️⃣ What should go into secrets?
+
+From your file, these must be secrets:
+
+ssl.truststore.password
+
+ssl.keystore.password
+
+ssl.key.password
+
+(optionally) bootstrap.servers if it’s sensitive
+
+The cert files (.p12) themselves
+
+We’ll split this into two secrets (best practice):
+
+Kafka credentials (passwords)
+
+Kafka certs (binary files)
+
+2️⃣ Create secret for passwords (key-value)
+📌 Command
+oc create secret generic kafka-producer-secrets \
+  --from-literal=SSL_TRUSTSTORE_PASSWORD=xxxxxxx \
+  --from-literal=SSL_KEYSTORE_PASSWORD=xxxxxxx \
+  --from-literal=SSL_KEY_PASSWORD=xxxxxx
+
+
+✅ This creates a secret with env-friendly keys
+
+Verify:
+
+oc get secret kafka-producer-secrets -o yaml
+
+3️⃣ Create secret for Kafka cert files (binary)
+
+Your files:
+
+uat-kafka.truststore.java8.p12
+uat-kafka.keystore.java8.p12
+
+📌 Command
+oc create secret generic kafka-producer-certs \
+  --from-file=uat-kafka.truststore.java8.p12 \
+  --from-file=uat-kafka.keystore.java8.p12
+
+
+Verify:
+
+oc describe secret kafka-producer-certs
+
+4️⃣ Mount cert secret into the pod
+
+Mount it exactly where your config expects it:
+
+volumeMounts:
+  - name: kafka-certs
+    mountPath: /mnt/appsrc/kafka/certs
+    readOnly: true
+
+volumes:
+  - name: kafka-certs
+    secret:
+      secretName: kafka-producer-certs
+
+
+📌 Result inside pod:
+
+/mnt/appsrc/kafka/certs/
+ ├── uat-kafka.truststore.java8.p12
+ └── uat-kafka.keystore.java8.p12
+
+5️⃣ Inject passwords as environment variables
+env:
+  - name: SSL_TRUSTSTORE_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: kafka-producer-secrets
+        key: SSL_TRUSTSTORE_PASSWORD
+
+  - name: SSL_KEYSTORE_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: kafka-producer-secrets
+        key: SSL_KEYSTORE_PASSWORD
+
+  - name: SSL_KEY_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: kafka-producer-secrets
+        key: SSL_KEY_PASSWORD
+
+6️⃣ Update producer_config.properties
+
+Replace hardcoded passwords with env references.
+
+✅ Recommended version
+bootstrap.servers=${BOOTSTRAP_SERVERS}
+
+acks=all
+retries=3
+
+security.protocol=SSL
+
+ssl.truststore.location=/mnt/appsrc/kafka/certs/uat-kafka.truststore.java8.p12
+ssl.truststore.password=${SSL_TRUSTSTORE_PASSWORD}
+ssl.truststore.type=PKCS12
+
+ssl.keystore.location=/mnt/appsrc/kafka/certs/uat-kafka.keystore.java8.p12
+ssl.keystore.password=${SSL_KEYSTORE_PASSWORD}
+ssl.key.password=${SSL_KEY_PASSWORD}
+ssl.keystore.type=PKCS12
+
+ssl.endpoint.identification.algorithm=
+
+
+⚠️ Your app must support env substitution (most Java/Kafka apps do).
+If not → we’ll template it at startup (tell me).
+
+7️⃣ (Optional but clean) Store config file itself as a secret
+
+If you want zero config baked into image:
+
+oc create secret generic kafka-producer-config \
+  --from-file=producer_config.properties
+
+
+Mount it:
+
+volumeMounts:
+  - name: kafka-config
+    mountPath: /mnt/appsrc/kafka/config
+    readOnly: true
+
+8️⃣ Pod restart behavior (important)
+
+✅ Secrets persist across pod restarts
+✅ No need to recreate them
+❌ If secret value changes → restart pod required
+
+Restart safely:
+
+oc rollout restart deployment <deployment-name>
+
+9️⃣ Quick sanity check inside pod
+oc rsh <pod-name>
+
+ls /mnt/appsrc/kafka/certs
+env | grep SSL_
+
+✅ Best-practice summary
+
+✔ No passwords in Git
+✔ Certs managed by OpenShift
+✔ Pod restart safe
+✔ CI/CD friendly
+✔ Security audit friendly
