@@ -177,3 +177,129 @@ env | grep SSL_
 ✔ Pod restart safe
 ✔ CI/CD friendly
 ✔ Security audit friendly
+
+
+
+=====================================================================
+
+Perfect 👍 since this is OpenShift (oc), here’s the most correct, OpenShift-native, scanner-safe way — no Python, no code changes.
+
+I’ll keep it tight and practical.
+
+✅ OpenShift-only solution (no Python, no hardcoded secrets)
+What we’ll use
+
+Secret → for passwords
+
+ConfigMap → for JSON template
+
+envsubst → to render JSON at pod startup
+
+This is exactly what auditors expect on OpenShift.
+
+1️⃣ Create JSON template (SAFE)
+drive.json.template
+{
+  "type": "MariaDB",
+  "userName": "drive",
+  "userPassword": "${DB_PASSWORD}",
+  "keystorePassword": "${KEYSTORE_PASSWORD}"
+}
+
+
+✔ No secrets
+✔ Won’t be flagged by SCA
+
+2️⃣ Create OpenShift Secret
+oc create secret generic drive-secrets \
+  --from-literal=DB_PASSWORD=******** \
+  --from-literal=KEYSTORE_PASSWORD=********
+
+3️⃣ Create OpenShift ConfigMap for template
+oc create configmap drive-config-template \
+  --from-file=drive.json.template
+
+4️⃣ Deployment YAML (OpenShift-native)
+🔹 Environment variables from Secret
+env:
+  - name: DB_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: drive-secrets
+        key: DB_PASSWORD
+
+  - name: KEYSTORE_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: drive-secrets
+        key: KEYSTORE_PASSWORD
+
+🔹 Mount JSON template
+volumeMounts:
+  - name: drive-config
+    mountPath: /config
+    readOnly: true
+
+volumes:
+  - name: drive-config
+    configMap:
+      name: drive-config-template
+
+5️⃣ Generate real JSON at pod startup
+🔹 Command override
+command: ["/bin/sh", "-c"]
+args:
+  - |
+    envsubst < /config/drive.json.template > /config/drive.json
+    exec /usr/bin/start-app
+
+
+📌 Replace /usr/bin/start-app with your real start command.
+
+6️⃣ Result inside pod (proof)
+oc rsh <pod-name>
+cat /config/drive.json
+
+
+You’ll see:
+
+{
+  "type": "MariaDB",
+  "userName": "drive",
+  "userPassword": "******",
+  "keystorePassword": "******"
+}
+
+
+✔ Exists only at runtime
+✔ Never stored in Git
+✔ Never hardcoded
+
+🛡 Why OpenText SCA will clear this
+
+❌ No password literals in code
+
+❌ No static secrets in JSON
+
+✅ Secrets managed by OpenShift
+
+✅ Runtime injection only
+
+This matches exactly their recommendation:
+
+“Passwords should be managed in an external source.”
+
+🧾 One-liner for security report
+
+You can paste this:
+
+Hardcoded passwords were removed from JSON configuration files. Sensitive values are managed using OpenShift Secrets and injected into the application at runtime via environment variable substitution. No credentials are stored in source-controlled artifacts.
+
+⭐ OpenShift best-practice tip
+
+If you ever rotate secrets:
+
+oc rollout restart deployment <name>
+
+
+No code changes needed ✔
