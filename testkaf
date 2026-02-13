@@ -1,0 +1,71 @@
+#!/bin/bash
+
+# ==============================
+# Configuration
+# ==============================
+
+BOOTSTRAP_SERVER="hostname:9092"
+TOPIC="P2PDEBIT"
+CONFIG_FILE="./testclient.properties"
+
+TOTAL_RECORDS=20000000   # 2 crore
+CPU_CORES=$(nproc)
+PARALLEL_JOBS=$CPU_CORES
+RECORDS_PER_JOB=$((TOTAL_RECORDS / PARALLEL_JOBS))
+
+echo "Total records: $TOTAL_RECORDS"
+echo "CPU cores detected: $CPU_CORES"
+echo "Parallel jobs: $PARALLEL_JOBS"
+echo "Records per job: $RECORDS_PER_JOB"
+
+# ==============================
+# Function to send messages
+# ==============================
+
+send_messages() {
+  JOB_ID=$1
+  START_OFFSET=$(( (JOB_ID - 1) * RECORDS_PER_JOB ))
+
+  for ((i=1; i<=RECORDS_PER_JOB; i++))
+  do
+    GLOBAL_INDEX=$((START_OFFSET + i))
+
+    # Unique 10 digit mobile
+    MOBILE=$((9000000000 + GLOBAL_INDEX))
+
+    # Random amount between 1 and 99
+    AMOUNT=$(( (RANDOM % 99) + 1 ))
+
+    # Unique name
+    NAME="User_${GLOBAL_INDEX}"
+
+    echo "{\"prdmobile\":\"$MOBILE\",\
+\"txnid\":\"TXN${JOB_ID}_${i}\",\
+\"txntype\":\"Debit\",\
+\"prfname\":\"$NAME\",\
+\"txnamount\":$AMOUNT,\
+\"prdapp\":\"Gpay\",\
+\"prfvaddr\":\"Pune, Maharashtra, India\",\
+\"praccno\":\"123456789012\",\
+\"prifsccode\":\"SBIN0001234\",\
+\"transactionDateTime\":\"2026-02-11 15:56:00\",\
+\"currstatusdesc\":\"SUCCESS\"}"
+  
+  done | ./kafka-console-producer.sh \
+        --bootstrap-server $BOOTSTRAP_SERVER \
+        --topic $TOPIC \
+        --producer.config $CONFIG_FILE
+}
+
+# ==============================
+# Run Parallel
+# ==============================
+
+for ((j=1; j<=PARALLEL_JOBS; j++))
+do
+  send_messages $j &
+done
+
+wait
+
+echo "✅ Finished sending 2 crore records."
