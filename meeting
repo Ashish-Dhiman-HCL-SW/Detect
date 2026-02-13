@@ -1,2 +1,7 @@
 meeting
 https://teams.microsoft.com/meet/44677067635220?p=SvutnK1LrkLVV9q7hc
+
+
+
+
+echo '{"prdmobile": "91","txnid": "TXN20","txntype": "Debit","prfname": "Om Mahodaya","txnamount": 80,"prdapp": "Gpay","prfvaddr": "Pune, Maharashtra, India","praccno": "123456789012","prifsccode": "SBIN0001234","transactionDateTime": "2026-02-11 15:56:00","currstatusdesc": "SUCCESS"}' | ./kafka-console-producer.sh --bootstrap-server hostname:9092 --topic P2PDEBIT --producer.config ./testclient.properties
